@@ -1,0 +1,26 @@
+# Model weights (too large for git — run models/download_weights.py)
+models/mediapipe/
+models/univfd/
+models/efficientnet/
+models/xception/
+models/dire/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Env
+.env
+*.env.local
+
+# OS
+.DS_Store
+Thumbs.db
