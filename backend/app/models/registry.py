@@ -2,7 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 import torch
 import structlog
-from app.config import MODEL_PATHS
+from app.config.settings import MODEL_PATHS
 from app.models.base import BaseDetector
 from app.models.univfd import UnivFDDetector
 from app.models.efficientnet import EfficientNetDetector

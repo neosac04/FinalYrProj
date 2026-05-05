@@ -7,20 +7,20 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from PIL import Image
 
-from app.config import settings
+from app.config.settings import settings
 from app.models.registry import ModelRegistry
-from app.analysis.facial import FacialAnalyzer
-from app.analysis.frequency import FrequencyAnalyzer
-from app.analysis.prnu import PRNUAnalyzer
-from app.analysis.color import ColorAnalyzer
-from app.analysis.compression import CompressionAnalyzer
+from app.preprocessing.facial import FacialAnalyzer
+from app.preprocessing.frequency import FrequencyAnalyzer
+from app.preprocessing.prnu import PRNUAnalyzer
+from app.preprocessing.color import ColorAnalyzer
+from app.preprocessing.compression import CompressionAnalyzer
 from app.core.ensemble import WeightedEnsemble
 from app.core.fake_type_classifier import FakeTypeClassifier
-from app.utils.face_detection import detect_largest_face
+from app.preprocessing.face_detection import detect_largest_face
 from app.schemas.response import (
     DetectionResponse, ModelPrediction, PCAVisualization,
 )
-from app.utils.image import preprocess
+from app.preprocessing.image_transforms import preprocess
 
 
 # PCA reference cluster centroids (pre-computed from labelled dataset statistics)

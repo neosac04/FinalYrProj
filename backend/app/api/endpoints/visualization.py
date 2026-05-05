@@ -8,8 +8,8 @@ from PIL import Image
 from app.explainability.overlay import heatmap_to_overlay, ensemble_heatmap
 from app.models.registry import ModelRegistry
 from app.storage.result_cache import ResultCache
-from app.utils.face_detection import detect_largest_face
-from app.utils.image import preprocess
+from app.preprocessing.face_detection import detect_largest_face
+from app.preprocessing.image_transforms import preprocess
 
 router = APIRouter()
 

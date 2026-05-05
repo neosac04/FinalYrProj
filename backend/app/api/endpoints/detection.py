@@ -3,7 +3,7 @@ import io
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from PIL import Image
 
-from app.config import settings
+from app.config.settings import settings
 from app.core.pipeline import DetectionPipeline
 from app.schemas.response import DetectionResponse
 from app.storage.result_cache import ResultCache

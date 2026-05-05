@@ -15,7 +15,7 @@ try:
 except Exception:
     cv2 = None
 
-from app.utils.face_detection import detect_largest_face
+from app.preprocessing.face_detection import detect_largest_face
 
 
 CLIP_MEAN = (0.48145466, 0.4578275, 0.40821073)
