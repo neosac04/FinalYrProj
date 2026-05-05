@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from app.models.base import BaseDetector, ModelOutput
+from app.utils.model_loading import load_model_weights
 
 
 class UnivFDDetector(BaseDetector):
@@ -32,16 +33,7 @@ class UnivFDDetector(BaseDetector):
             p.requires_grad = False
 
         self.linear = nn.Linear(768, 1)
-        state = torch.load(weights_path, map_location=device)
-        # Handle both raw state_dict and wrapped checkpoints
-        if isinstance(state, dict) and "fc.weight" in state:
-            self.linear.weight.data = state["fc.weight"]
-            self.linear.bias.data = state["fc.bias"]
-        elif isinstance(state, dict) and "weight" in state:
-            self.linear.load_state_dict(state)
-        else:
-            self.linear.load_state_dict(state)
-        self.linear.eval().to(device)
+        self.linear = load_model_weights(self.linear, weights_path, str(device))
         self._loaded = True
 
     @property

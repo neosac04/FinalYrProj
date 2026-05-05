@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from app.models.base import BaseDetector, ModelOutput
+from app.utils.model_loading import load_model_weights
 
 
 class EfficientNetDetector(BaseDetector):
@@ -34,17 +35,7 @@ class EfficientNetDetector(BaseDetector):
         in_feats = backbone._fc.in_features
         backbone._fc = nn.Linear(in_feats, 2)
         self.model = backbone
-
-        state = torch.load(weights_path, map_location=device)
-        cleaned: dict = {}
-        for k, v in state.items():
-            k2 = k.replace("backbone.efficientnet.", "")
-            k2 = k2.replace("backbone.", "")   # strip bare backbone. for last_layer.*
-            k2 = k2.replace("last_layer.", "_fc.")
-            cleaned[k2] = v
-
-        missing, unexpected = self.model.load_state_dict(cleaned, strict=False)
-        self.model.eval().to(device)
+        self.model = load_model_weights(self.model, weights_path, str(device))
 
         # GradCAM++ target: final conv before global pool
         self._gradcam_layer = self.model._conv_head

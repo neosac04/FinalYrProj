@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from app.models.base import BaseDetector, ModelOutput
+from app.utils.model_loading import load_model_weights
 
 
 class XceptionDetector(BaseDetector):
@@ -30,23 +31,7 @@ class XceptionDetector(BaseDetector):
         self.device = device
         # timm's xception has num_classes as the classification head size
         self.model = timm.create_model("xception", pretrained=False, num_classes=2)
-
-        state = torch.load(weights_path, map_location=device)
-        if isinstance(state, dict):
-            sd = state.get("model", state.get("state_dict", state.get("net", state)))
-        else:
-            sd = state
-
-        # Strip common wrapper prefixes from DeepfakeBench checkpoints
-        # and remap classifier head: last_linear → fc (timm uses 'fc')
-        cleaned: dict = {}
-        for k, v in sd.items():
-            k2 = k.replace("module.", "").replace("backbone.", "")
-            k2 = k2.replace("last_linear.", "fc.")
-            cleaned[k2] = v
-
-        self.model.load_state_dict(cleaned, strict=False)
-        self.model.eval().to(device)
+        self.model = load_model_weights(self.model, weights_path, str(device))
 
         # GradCAM++ target: last conv layer before global pool
         try:

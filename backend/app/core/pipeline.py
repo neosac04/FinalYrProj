@@ -3,7 +3,6 @@ import asyncio
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -17,6 +16,7 @@ from app.analysis.color import ColorAnalyzer
 from app.analysis.compression import CompressionAnalyzer
 from app.core.ensemble import WeightedEnsemble
 from app.core.fake_type_classifier import FakeTypeClassifier
+from app.utils.face_detection import detect_largest_face
 from app.schemas.response import (
     DetectionResponse, ModelPrediction, PCAVisualization,
 )
@@ -53,7 +53,11 @@ class DetectionPipeline:
 
     async def run(self, image: Image.Image) -> DetectionResponse:
         t_start = time.time()
-        preprocessed = preprocess(image)
+        source_rgb = np.array(image.convert("RGB"))
+        face_crop = detect_largest_face(source_rgb)
+        used_full_image_for_face_models = face_crop is None
+        working_image = Image.fromarray(face_crop) if face_crop is not None else image.convert("RGB")
+        preprocessed = preprocess(working_image)
         loop = asyncio.get_event_loop()
 
         def run_model(name: str):
@@ -63,19 +67,19 @@ class DetectionPipeline:
             return det.predict(preprocessed)
 
         def run_facial():
-            return self._facial.analyze(image)
+            return self._facial.analyze(working_image)
 
         def run_frequency():
-            return self._frequency.analyze(image)
+            return self._frequency.analyze(working_image)
 
         def run_prnu():
-            return self._prnu.analyze(image)
+            return self._prnu.analyze(working_image)
 
         def run_color():
-            return self._color.analyze(image)
+            return self._color.analyze(working_image)
 
         def run_compression():
-            return self._compression.analyze(image)
+            return self._compression.analyze(working_image)
 
         # Run everything in parallel
         tasks = [
@@ -97,6 +101,13 @@ class DetectionPipeline:
         prnu       = results[5] if not isinstance(results[5], Exception) else self._prnu.analyze(image)
         color      = results[6] if not isinstance(results[6], Exception) else self._color.analyze(image)
         compression= results[7] if not isinstance(results[7], Exception) else self._compression.analyze(image)
+
+        by_name = {m.model_name: m for m in model_outputs}
+        print(f"Face detected: {face_crop is not None}")
+        print(f"Used full image fallback: {used_full_image_for_face_models}")
+        print(f"UnivFD score: {by_name.get('univfd').fake_prob if by_name.get('univfd') else 'unavailable'}")
+        print(f"EfficientNet score: {by_name.get('efficientnet').fake_prob if by_name.get('efficientnet') else 'unavailable'}")
+        print(f"Xception score: {by_name.get('xception').fake_prob if by_name.get('xception') else 'unavailable'}")
 
         # Initial ensemble pass to get type hint
         fake_type = self._classifier.classify(
@@ -125,6 +136,8 @@ class DetectionPipeline:
             ))
 
         warnings: list[str] = []
+        if face_crop is None:
+            warnings.append("No face detected; using the full image for analysis.")
         if len(model_outputs) < 3:
             missing = 3 - len(model_outputs)
             warnings.append(f"{missing} model(s) unavailable (weights not downloaded). Run models/download_weights.py")
@@ -140,6 +153,7 @@ class DetectionPipeline:
             confidence=ensemble.confidence,
             model_predictions=model_preds,
             ensemble_weights=ensemble.weights_used,
+            used_full_image_for_face_models=used_full_image_for_face_models,
             facial_analysis=facial,
             frequency_analysis=frequency,
             prnu_analysis=prnu,

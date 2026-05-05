@@ -75,6 +75,7 @@ class DetectionResponse(BaseModel):
 
     model_predictions: list[ModelPrediction]
     ensemble_weights: dict[str, float]
+    used_full_image_for_face_models: bool
 
     facial_analysis: FacialAnalysis | None
     frequency_analysis: FrequencyAnalysis

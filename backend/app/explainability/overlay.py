@@ -1,9 +1,13 @@
 from __future__ import annotations
 import base64
 import io
-import cv2
 import numpy as np
 from PIL import Image
+
+try:
+    import cv2
+except Exception:
+    cv2 = None
 
 
 def heatmap_to_overlay(
@@ -15,6 +19,11 @@ def heatmap_to_overlay(
     Resize heatmap (H×W float32, range 0-1) to match original image,
     apply JET colormap (blue=real, red=fake), blend at alpha, return PNG bytes.
     """
+    if cv2 is None:
+        buf = io.BytesIO()
+        original.convert("RGB").save(buf, format="PNG")
+        return buf.getvalue()
+
     w, h = original.size
     hm_resized = cv2.resize(heatmap, (w, h), interpolation=cv2.INTER_CUBIC)
     hm_uint8 = (np.clip(hm_resized, 0, 1) * 255).astype(np.uint8)

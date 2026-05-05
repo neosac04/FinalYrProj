@@ -1,4 +1,20 @@
+from __future__ import annotations
+
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _env_path(name: str, default: str) -> str:
+    value = os.getenv(name)
+    return value if value else default
+
+
+MODEL_PATHS = {
+    "univfd": _env_path("UNIVFD_MODEL_PATH", "models/univfd.pth"),
+    "efficientnet": _env_path("EFFICIENTNET_MODEL_PATH", "models/efficientnet.pth"),
+    "xception": _env_path("XCEPTION_MODEL_PATH", "models/xception.pth"),
+}
 
 
 class Settings(BaseSettings):

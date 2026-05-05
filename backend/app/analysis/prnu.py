@@ -1,10 +1,31 @@
 from __future__ import annotations
 import base64
-import cv2
 import numpy as np
 from PIL import Image
-from scipy.ndimage import gaussian_filter
 from app.schemas.response import PRNUAnalysis
+
+try:
+    import cv2
+except Exception:
+    cv2 = None
+
+try:
+    from scipy.ndimage import gaussian_filter
+except Exception:
+    def gaussian_filter(array, sigma=2.0):
+        array = np.asarray(array, dtype=np.float64)
+        radius = max(1, int(round(float(sigma) * 2)))
+        size = radius * 2 + 1
+        kernel_1d = np.exp(-0.5 * (np.arange(size) - radius) ** 2 / max(float(sigma) ** 2, 1e-8))
+        kernel_1d = kernel_1d / kernel_1d.sum()
+        kernel_2d = np.outer(kernel_1d, kernel_1d)
+        padded = np.pad(array, radius, mode="reflect")
+        result = np.zeros_like(array, dtype=np.float64)
+        for y in range(array.shape[0]):
+            for x in range(array.shape[1]):
+                window = padded[y:y + size, x:x + size]
+                result[y, x] = float(np.sum(window * kernel_2d))
+        return result
 
 
 class PRNUAnalyzer:
@@ -90,6 +111,9 @@ class PRNUAnalyzer:
 
     def _visualize_noise(self, noise: np.ndarray) -> str:
         """Visualize PRNU noise residual as a base64 PNG."""
+        if cv2 is None:
+            return ""
+
         gray_noise = noise.mean(axis=2)
         # Amplify and normalize for visibility
         amplified = gray_noise * 10.0

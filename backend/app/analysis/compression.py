@@ -1,10 +1,14 @@
 from __future__ import annotations
 import base64
 import io
-import cv2
 import numpy as np
 from PIL import Image
 from app.schemas.response import CompressionAnalysis
+
+try:
+    import cv2
+except Exception:
+    cv2 = None
 
 
 class CompressionAnalyzer:
@@ -78,6 +82,9 @@ class CompressionAnalyzer:
 
     def _ela_visualization(self, image: Image.Image) -> str:
         """Returns base64-encoded amplified ELA difference image."""
+        if cv2 is None:
+            return ""
+
         buf = io.BytesIO()
         image.save(buf, format="JPEG", quality=90)
         buf.seek(0)

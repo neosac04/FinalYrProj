@@ -1,10 +1,24 @@
 from __future__ import annotations
 import os
-import cv2
 import numpy as np
 from PIL import Image
-from scipy.spatial import distance as scipy_dist
 from app.schemas.response import FacialAnalysis
+
+try:
+    import cv2
+except Exception:
+    cv2 = None
+
+try:
+    from scipy.spatial import distance as scipy_dist
+except Exception:
+    class _DistanceFallback:
+        @staticmethod
+        def euclidean(point_a, point_b):
+            delta = np.asarray(point_a, dtype=np.float64) - np.asarray(point_b, dtype=np.float64)
+            return float(np.sqrt(np.sum(delta * delta)))
+
+    scipy_dist = _DistanceFallback()
 
 # Default path for the MediaPipe FaceLandmarker model bundle
 _DEFAULT_MODEL_PATH = os.path.join(
@@ -174,6 +188,9 @@ class FacialAnalyzer:
 
     def _jaw_blending_score(self, img: np.ndarray, pts: list[tuple]) -> float:
         try:
+            if cv2 is None:
+                return 0.5
+
             jaw_indices = [10, 338, 297, 332, 284, 251, 389, 356,
                            454, 323, 361, 288, 397, 365, 379, 378,
                            400, 377, 152]

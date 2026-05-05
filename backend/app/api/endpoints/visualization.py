@@ -2,11 +2,13 @@ from __future__ import annotations
 import io
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+import numpy as np
 from PIL import Image
 
 from app.explainability.overlay import heatmap_to_overlay, ensemble_heatmap
 from app.models.registry import ModelRegistry
 from app.storage.result_cache import ResultCache
+from app.utils.face_detection import detect_largest_face
 from app.utils.image import preprocess
 
 router = APIRouter()
@@ -36,7 +38,9 @@ async def get_heatmap(result_id: str, model_name: str):
         )
 
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    preprocessed = preprocess(image)
+    face_crop = detect_largest_face(np.array(image))
+    working_image = Image.fromarray(face_crop) if face_crop is not None else image
+    preprocessed = preprocess(working_image)
 
     if model_name == "ensemble":
         heatmaps = []

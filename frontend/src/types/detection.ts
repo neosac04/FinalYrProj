@@ -73,6 +73,7 @@ export interface DetectionResponse {
   confidence: number
   model_predictions: ModelPrediction[]
   ensemble_weights: Record<string, number>
+  used_full_image_for_face_models: boolean
   facial_analysis: FacialAnalysis | null
   frequency_analysis: FrequencyAnalysis
   prnu_analysis: PRNUAnalysis

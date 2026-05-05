@@ -1,10 +1,14 @@
 from __future__ import annotations
 import base64
 import io
-import cv2
 import numpy as np
 from PIL import Image
 from app.schemas.response import FrequencyAnalysis
+
+try:
+    import cv2
+except Exception:
+    cv2 = None
 
 
 class FrequencyAnalyzer:
@@ -103,6 +107,9 @@ class FrequencyAnalyzer:
 
     def _fft_visualization(self, gray: np.ndarray) -> str:
         """Returns base64-encoded INFERNO colormap FFT magnitude spectrum."""
+        if cv2 is None:
+            return ""
+
         f = np.fft.fftshift(np.fft.fft2(gray))
         magnitude = np.log(np.abs(f) + 1.0)
         norm = ((magnitude - magnitude.min()) /

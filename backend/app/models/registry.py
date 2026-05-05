@@ -1,7 +1,8 @@
 from __future__ import annotations
-import os
+from pathlib import Path
 import torch
 import structlog
+from app.config import MODEL_PATHS
 from app.models.base import BaseDetector
 from app.models.univfd import UnivFDDetector
 from app.models.efficientnet import EfficientNetDetector
@@ -29,24 +30,32 @@ class ModelRegistry:
         )
         log.info("loading_models", device=str(device))
 
+        repo_root = Path(__file__).resolve().parents[3]
+
+        def resolve_path(path_str: str) -> Path:
+            path = Path(path_str)
+            return path if path.is_absolute() else (repo_root / path).resolve()
+
         detectors: list[tuple[str, BaseDetector, str]] = [
-            ("univfd",       UnivFDDetector(),       os.path.join(models_dir, "univfd",       "fc_weights.pth")),
-            ("efficientnet", EfficientNetDetector(), os.path.join(models_dir, "efficientnet", "efficientnet_b4_ff++.pth")),
-            ("xception",     XceptionDetector(),     os.path.join(models_dir, "xception",     "xception_ff++.pth")),
+            ("univfd", UnivFDDetector(), MODEL_PATHS["univfd"]),
+            ("efficientnet", EfficientNetDetector(), MODEL_PATHS["efficientnet"]),
+            ("xception", XceptionDetector(), MODEL_PATHS["xception"]),
             # DIRE disabled: requires 6-channel input (img + diffusion reconstruction)
             # which needs a full diffusion model at inference time.
         ]
 
         for name, detector, weights_path in detectors:
-            if os.path.exists(weights_path):
+            resolved_path = resolve_path(weights_path)
+            if resolved_path.exists():
                 try:
-                    detector.load(weights_path, device)
+                    detector.load(str(resolved_path), device)
                     self._detectors[name] = detector
                     log.info("model_loaded", name=name)
                 except Exception as exc:
                     log.warning("model_load_failed", name=name, error=str(exc))
             else:
-                log.warning("weights_missing", name=name, path=weights_path)
+                print(f"Warning: missing weights for {name}: {resolved_path}")
+                log.warning("weights_missing", name=name, path=str(resolved_path))
 
         self._loaded = True
 
