@@ -5,6 +5,9 @@ models/efficientnet/
 models/xception/
 models/dire/
 
+# Local datasets
+images/
+
 # Python
 .venv/
 __pycache__/
