@@ -19,8 +19,8 @@ _clip_transform = T.Compose([
 ])
 
 _imagenet_transform = T.Compose([
-    T.Resize(600, interpolation=T.InterpolationMode.BICUBIC),
-    T.CenterCrop(600),
+    T.Resize(380, interpolation=T.InterpolationMode.BICUBIC),
+    T.CenterCrop(380),
     T.ToTensor(),
     T.Normalize(IMAGENET_MEAN, IMAGENET_STD),
 ])

@@ -6,6 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from app.models.base import BaseDetector, ModelOutput
 
+DEBUG_EFFNET_LOADING = True
+
 
 class EfficientNetDetector(BaseDetector):
     """
@@ -21,43 +23,82 @@ class EfficientNetDetector(BaseDetector):
         self.device = torch.device("cpu")
         self._activations: torch.Tensor | None = None
         self._gradients: torch.Tensor | None = None
+        self._architecture = "efficientnet_pytorch"
 
     def load(self, weights_path: str, device: torch.device) -> None:
-        from efficientnet_pytorch import EfficientNet
-
         self.device = device
-
-        # 🔹 Build EfficientNet-B4 backbone
-        backbone = EfficientNet.from_name("efficientnet-b4")
-        in_feats = backbone._fc.in_features
-        backbone._fc = nn.Linear(in_feats, 2)
-        self.model = backbone.to(device)
-
         print(f"\n🔍 Loading EfficientNet weights from: {weights_path}")
 
         # 🔹 Load checkpoint
         state = torch.load(weights_path, map_location=device)
-
         if isinstance(state, dict):
             sd = state.get("model", state.get("state_dict", state))
         else:
             sd = state
 
-        # 🔹 Clean and remap keys
+        if DEBUG_EFFNET_LOADING:
+            print("sd.keys()")
+            print(sd.keys())
+
+        # Try efficientnet_pytorch mapping first.
+        self.model, self._architecture = self._build_efficientnet_pytorch(device)
         cleaned_sd = {}
+        classifier_map_hits: list[tuple[str, str]] = []
+
         for k, v in sd.items():
-            k = k.replace("module.", "")
-            k = k.replace("backbone.", "")
-            k = k.replace("last_layer.", "_fc.")
-            k = k.replace("classifier.", "_fc.")
-            cleaned_sd[k] = v
+            nk = k
+            for prefix in ("module.", "backbone.", "model.", "net.", "encoder.", "efficientnet."):
+                if nk.startswith(prefix):
+                    nk = nk[len(prefix):]
 
-        # 🔹 Load weights with debug info
-        missing, unexpected = self.model.load_state_dict(cleaned_sd, strict=False)
+            # Classifier remaps for different wrappers.
+            if nk.startswith("last_layer."):
+                mapped = nk.replace("last_layer.", "_fc.")
+                classifier_map_hits.append((k, mapped))
+                nk = mapped
+            elif nk.startswith("classifier.") and not nk.startswith("classifier.0"):
+                mapped = nk.replace("classifier.1.", "_fc.")
+                if mapped == nk:
+                    mapped = nk.replace("classifier.", "_fc.")
+                classifier_map_hits.append((k, mapped))
+                nk = mapped
+            elif nk.startswith("head.fc."):
+                mapped = nk.replace("head.fc.", "_fc.")
+                classifier_map_hits.append((k, mapped))
+                nk = mapped
+            elif nk.startswith("fc."):
+                mapped = nk.replace("fc.", "_fc.")
+                classifier_map_hits.append((k, mapped))
+                nk = mapped
 
-        print("✅ EfficientNet loaded successfully")
-        print(f"Missing keys ({len(missing)}):", missing[:10])
-        print(f"Unexpected keys ({len(unexpected)}):", unexpected[:10])
+            cleaned_sd[nk] = v
+
+        missing, unexpected, model_keys, ckpt_keys = self._load_with_debug(cleaned_sd)
+
+        # If this is timm/torchvision style (features.* + classifier.*), load with torchvision backend.
+        timm_like = any(k.startswith("features.") for k in sd.keys()) and any(
+            k.startswith("classifier.") for k in sd.keys()
+        )
+        if timm_like and (len(missing) > 100 or len(unexpected) > 100):
+            self.model, self._architecture = self._build_torchvision_b4(device)
+            cleaned_sd = self._remap_torchvision_style(sd)
+            missing, unexpected, model_keys, ckpt_keys = self._load_with_debug(cleaned_sd)
+
+        if DEBUG_EFFNET_LOADING:
+            print("Classifier mappings:")
+            for src, dst in classifier_map_hits[:20]:
+                print(f"{src} -> {dst}")
+            print("Missing from checkpoint:")
+            print(model_keys - ckpt_keys)
+            print("Unexpected in checkpoint:")
+            print(ckpt_keys - model_keys)
+            print("Tensor shapes:")
+            for k, v in cleaned_sd.items():
+                print(k, v.shape)
+
+        print("✅ EfficientNet loaded")
+        print("Missing keys:", missing[:10])
+        print("Unexpected keys:", unexpected[:10])
 
         if len(missing) > 50:
             print("⚠️ WARNING: Too many missing keys — possible architecture mismatch")
@@ -65,10 +106,75 @@ class EfficientNetDetector(BaseDetector):
         self.model.eval()
 
         # 🔹 GradCAM++ setup
-        self._gradcam_layer = self.model._conv_head
+        self._gradcam_layer = self._resolve_gradcam_layer()
         self._register_hooks()
 
         self._loaded = True
+
+    def _build_efficientnet_pytorch(self, device: torch.device) -> tuple[nn.Module, str]:
+        from efficientnet_pytorch import EfficientNet
+
+        model = EfficientNet.from_name("efficientnet-b4")
+        model._fc = nn.Linear(model._fc.in_features, 2)
+        return model.to(device), "efficientnet_pytorch"
+
+    def _build_torchvision_b4(self, device: torch.device) -> tuple[nn.Module, str]:
+        from torchvision.models import efficientnet_b4
+
+        model = efficientnet_b4(weights=None)
+        in_feats = model.classifier[1].in_features
+        model.classifier[1] = nn.Linear(in_feats, 2)
+        return model.to(device), "torchvision"
+
+    def _remap_torchvision_style(self, sd: dict) -> dict:
+        cleaned: dict[str, torch.Tensor] = {}
+        for k, v in sd.items():
+            nk = k
+            for prefix in ("module.", "backbone.", "model.", "net.", "encoder.", "efficientnet."):
+                if nk.startswith(prefix):
+                    nk = nk[len(prefix):]
+            if nk.startswith("last_layer."):
+                nk = nk.replace("last_layer.", "classifier.1.")
+            elif nk.startswith("_fc."):
+                nk = nk.replace("_fc.", "classifier.1.")
+            elif nk.startswith("head.fc."):
+                nk = nk.replace("head.fc.", "classifier.1.")
+            elif nk.startswith("fc."):
+                nk = nk.replace("fc.", "classifier.1.")
+            cleaned[nk] = v
+
+        # If checkpoint has 1000-class classifier, intentionally skip loading it into 2-class head.
+        cls_w = cleaned.get("classifier.1.weight")
+        cls_b = cleaned.get("classifier.1.bias")
+        if cls_w is not None and cls_w.shape[0] != 2:
+            cleaned.pop("classifier.1.weight", None)
+        if cls_b is not None and cls_b.shape[0] != 2:
+            cleaned.pop("classifier.1.bias", None)
+        return cleaned
+
+    def _load_with_debug(self, cleaned_sd: dict) -> tuple[list[str], list[str], set[str], set[str]]:
+        model_state = self.model.state_dict()
+        filtered_sd: dict[str, torch.Tensor] = {}
+        for k, v in cleaned_sd.items():
+            if k not in model_state:
+                continue
+            if model_state[k].shape != v.shape:
+                if DEBUG_EFFNET_LOADING:
+                    print(f"Skipping shape-mismatch key: {k} ckpt={tuple(v.shape)} model={tuple(model_state[k].shape)}")
+                continue
+            filtered_sd[k] = v
+
+        model_keys = set(model_state.keys())
+        ckpt_keys = set(filtered_sd.keys())
+        missing, unexpected = self.model.load_state_dict(filtered_sd, strict=False)
+        return missing, unexpected, model_keys, ckpt_keys
+
+    def _resolve_gradcam_layer(self) -> nn.Module:
+        if hasattr(self.model, "_conv_head"):
+            return self.model._conv_head
+        if hasattr(self.model, "features"):
+            return self.model.features[-1]
+        raise RuntimeError("Unable to resolve EfficientNet GradCAM layer.")
 
     def _register_hooks(self) -> None:
         def fwd_hook(module, inp, out):

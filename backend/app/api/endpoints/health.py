@@ -79,7 +79,7 @@ async def ready():
     registry = ModelRegistry.get_instance()
     loaded_models = list(registry.all().keys())
 
-    expected_models = ["univfd", "efficientnet", "xception"]
+    expected_models = ["univfd", "efficientnet"]
     missing_models = [m for m in expected_models if m not in loaded_models]
 
     mediapipe_asset_ok = _MEDIAPIPE_ASSET.exists()
@@ -87,19 +87,13 @@ async def ready():
     torch_ok = _check_import("torch")
     mediapipe_ok = _check_import("mediapipe")
 
-    # FacialAnalyzer availability (won't construct one; just inspect singleton)
-    facial_analyzer_ok = _facial_analyzer_available()
-
     issues: list[str] = []
     if missing_models:
-        issues.append(
-            f"Models not loaded: {missing_models}. "
-            "Run: python models/download_weights.py"
-        )
+        issues.append(f"Models not loaded: {missing_models}.")
     if not mediapipe_asset_ok:
         issues.append(
             f"MediaPipe asset missing at {_MEDIAPIPE_ASSET}. "
-            "Run: python models/download_weights.py"
+            "Face detection will fall back to Haar Cascade."
         )
     if not torch_ok:
         issues.append("PyTorch not importable. Check your Python environment.")
@@ -116,7 +110,6 @@ async def ready():
         "models_loaded": loaded_models,
         "models_missing": missing_models,
         "mediapipe_asset_present": mediapipe_asset_ok,
-        "facial_analyzer_active": facial_analyzer_ok,
         "torch_available": torch_ok,
         "mediapipe_package_available": mediapipe_ok,
         "issues": issues,
@@ -148,17 +141,3 @@ def _check_import(package: str) -> bool:
         return False
 
 
-def _facial_analyzer_available() -> bool:
-    """
-    Check whether the FacialAnalyzer singleton is active without constructing
-    a new one (which would trigger MediaPipe init on first call).
-    """
-    try:
-        from app.preprocessing.facial import FacialAnalyzer
-        instance = FacialAnalyzer._instance
-        if instance is None:
-            # Singleton not yet created — report based on asset presence
-            return _MEDIAPIPE_ASSET.exists() and _check_import("mediapipe")
-        return instance.available
-    except Exception:
-        return False

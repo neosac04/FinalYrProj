@@ -50,7 +50,7 @@ class UnivFDDetector(BaseDetector):
         self.linear.weight.data.copy_(state["weight"])
         self.linear.bias.data.copy_(state["bias"])
 
-        print("✅ UnivFD linear layer loaded successfully")
+        print("✅ UnivFD loaded")
         print(f"Weight shape: {state['weight'].shape}")
         print(f"Bias shape: {state['bias'].shape}")
 
@@ -72,6 +72,7 @@ class UnivFDDetector(BaseDetector):
 
             logit = self.linear(features.float())
             fake_prob = torch.sigmoid(logit).item()
+            print("Fake probability:", fake_prob)
 
         # 🔥 Stability clamp
         fake_prob = max(min(fake_prob, 0.999), 0.001)

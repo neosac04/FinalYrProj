@@ -6,7 +6,6 @@ from app.config.settings import MODEL_PATHS
 from app.models.base import BaseDetector
 from app.models.univfd import UnivFDDetector
 from app.models.efficientnet import EfficientNetDetector
-from app.models.xception import XceptionDetector
 
 log = structlog.get_logger()
 
@@ -39,9 +38,6 @@ class ModelRegistry:
         detectors: list[tuple[str, BaseDetector, str]] = [
             ("univfd", UnivFDDetector(), MODEL_PATHS["univfd"]),
             ("efficientnet", EfficientNetDetector(), MODEL_PATHS["efficientnet"]),
-            ("xception", XceptionDetector(), MODEL_PATHS["xception"]),
-            # DIRE disabled: requires 6-channel input (img + diffusion reconstruction)
-            # which needs a full diffusion model at inference time.
         ]
 
         for name, detector, weights_path in detectors:

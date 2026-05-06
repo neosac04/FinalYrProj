@@ -21,7 +21,7 @@ async def get_heatmap(result_id: str, model_name: str):
         raise HTTPException(status_code=404, detail="Result not found or expired.")
 
     registry = ModelRegistry.get_instance()
-    allowed = {"univfd", "efficientnet", "freqnet", "dire", "ensemble"}
+    allowed = {"univfd", "efficientnet", "ensemble"}
     if model_name not in allowed:
         raise HTTPException(status_code=400, detail=f"model_name must be one of {allowed}")
 
@@ -45,7 +45,8 @@ async def get_heatmap(result_id: str, model_name: str):
     if model_name == "ensemble":
         heatmaps = []
         weights  = []
-        for name, weight in result.ensemble_weights.items():
+        ensemble_weights = {"univfd": 0.4, "efficientnet": 0.6} if result.face_detected else {"univfd": 1.0}
+        for name, weight in ensemble_weights.items():
             det = registry.get(name)
             if det is None:
                 continue

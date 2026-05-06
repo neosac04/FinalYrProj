@@ -11,9 +11,8 @@ def _env_path(name: str, default: str) -> str:
 
 
 MODEL_PATHS = {
-    "univfd": _env_path("UNIVFD_MODEL_PATH", "models/univfd.pth"),
-    "efficientnet": _env_path("EFFICIENTNET_MODEL_PATH", "models/efficientnet.pth"),
-    "xception": _env_path("XCEPTION_MODEL_PATH", "models/xception.pth"),
+    "univfd": _env_path("UNIVFD_MODEL_PATH", "backend/app/models/univfd.pth"),
+    "efficientnet": _env_path("EFFICIENTNET_MODEL_PATH", "models/efficientnet_binary.pth"),
 }
 
 
