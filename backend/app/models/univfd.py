@@ -4,14 +4,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 from app.models.base import BaseDetector, ModelOutput
-from app.utils.model_loading import load_model_weights
 
 
 class UnivFDDetector(BaseDetector):
     """
     UnivFD: CLIP ViT-L/14 frozen + linear probe.
-    Weights file contains only the linear layer; CLIP loaded via open_clip.
-    Visualization: attention rollout across all transformer blocks.
+    Loads ONLY linear layer weights (weight, bias).
+    Includes stability + debug logging.
     """
 
     model_name = "univfd"
@@ -24,16 +23,38 @@ class UnivFDDetector(BaseDetector):
 
     def load(self, weights_path: str, device: torch.device) -> None:
         import open_clip
+
         self.device = device
+
+        print(f"\n🔍 Loading UnivFD from: {weights_path}")
+
+        # 🔹 Load CLIP backbone
         self.clip_model, _, _ = open_clip.create_model_and_transforms(
             "ViT-L-14", pretrained="openai"
         )
         self.clip_model.eval().to(device)
+
         for p in self.clip_model.parameters():
             p.requires_grad = False
 
-        self.linear = nn.Linear(768, 1)
-        self.linear = load_model_weights(self.linear, weights_path, str(device))
+        # 🔹 Create linear probe
+        self.linear = nn.Linear(768, 1).to(device)
+
+        # 🔹 Load weights (direct mapping)
+        state = torch.load(weights_path, map_location=device)
+
+        if not isinstance(state, dict) or "weight" not in state:
+            raise ValueError("❌ Invalid UnivFD checkpoint format")
+
+        # Load directly
+        self.linear.weight.data.copy_(state["weight"])
+        self.linear.bias.data.copy_(state["bias"])
+
+        print("✅ UnivFD linear layer loaded successfully")
+        print(f"Weight shape: {state['weight'].shape}")
+        print(f"Bias shape: {state['bias'].shape}")
+
+        self.linear.eval()
         self._loaded = True
 
     @property
@@ -42,17 +63,26 @@ class UnivFDDetector(BaseDetector):
 
     def predict(self, preprocessed: dict) -> ModelOutput:
         t0 = time.time()
+
         with torch.no_grad():
             tensor = preprocessed["clip_tensor"].unsqueeze(0).to(self.device)
+
             features = self.clip_model.encode_image(tensor)
             features = features / (features.norm(dim=-1, keepdim=True) + 1e-8)
+
             logit = self.linear(features.float())
             fake_prob = torch.sigmoid(logit).item()
+
+        # 🔥 Stability clamp
+        fake_prob = max(min(fake_prob, 0.999), 0.001)
+        real_prob = 1.0 - fake_prob
+
         elapsed = (time.time() - t0) * 1000
+
         return ModelOutput(
             model_name=self.model_name,
             fake_prob=fake_prob,
-            real_prob=1.0 - fake_prob,
+            real_prob=real_prob,
             inference_time_ms=elapsed,
             features=features.cpu().numpy().flatten(),
         )
@@ -64,7 +94,6 @@ class UnivFDDetector(BaseDetector):
 
         def make_hook():
             def hook(module, inp, out):
-                # out: (batch, heads, seq, seq) or tuple
                 if isinstance(out, tuple):
                     out = out[0]
                 attentions.append(out.detach().cpu())
@@ -85,17 +114,18 @@ class UnivFDDetector(BaseDetector):
                 return None
 
             result = torch.eye(attentions[0].size(-1))
+
             for attn in attentions:
-                # Average over heads
                 a = attn.mean(dim=1).squeeze(0)
                 a = 0.5 * a + 0.5 * torch.eye(a.size(0))
                 a = a / (a.sum(dim=-1, keepdim=True) + 1e-8)
                 result = a @ result
 
-            # CLS token → patches: result[0, 1:] → (196,) → (14, 14)
             mask = result[0, 1:].reshape(14, 14).numpy()
             mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-8)
+
             return mask.astype(np.float32)
+
         except Exception:
             for h in hooks:
                 h.remove()

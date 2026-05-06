@@ -1,8 +1,11 @@
 from __future__ import annotations
+import logging
 import os
 import numpy as np
 from PIL import Image
 from app.schemas.response import FacialAnalysis
+
+logger = logging.getLogger(__name__)
 
 try:
     import cv2
@@ -27,50 +30,134 @@ _DEFAULT_MODEL_PATH = os.path.join(
 )
 
 
+def _neutral_analysis() -> FacialAnalysis:
+    """Return a neutral stub used whenever face analysis is unavailable."""
+    return FacialAnalysis(
+        face_detected=False,
+        face_count=0,
+        landmark_consistency_score=0.5,
+        eye_reflection_symmetry=0.5,
+        iris_regularity_score=0.5,
+        facial_geometry_score=0.5,
+        blending_boundary_score=0.5,
+        landmark_points=[],
+    )
+
+
 class FacialAnalyzer:
     """
     MediaPipe FaceLandmarker (Tasks API, mediapipe >=0.10).
-    Computes anatomical forgery signals:
-    - Eye specular highlight symmetry
-    - Iris circularity (5-point iris landmarks 468-477)
-    - Jaw boundary gradient discontinuity (face swap seam)
-    - Facial geometry golden-ratio consistency
-    - Landmark left/right symmetry score
+
+    Graceful degradation:
+      If the model asset is missing or MediaPipe fails to import / initialise,
+      the instance is created with ``available=False``.  All ``analyze()``
+      calls then return a neutral :class:`FacialAnalysis` stub rather than
+      raising.  A warning is logged once so operators know what is missing.
+
+    Anatomical forgery signals when available:
+      - Eye specular highlight symmetry
+      - Iris circularity (landmarks 468-477)
+      - Jaw boundary gradient discontinuity (face-swap seam detector)
+      - Facial geometry golden-ratio consistency
+      - Landmark left/right symmetry score
     """
 
     _instance: FacialAnalyzer | None = None
 
     def __init__(self, model_path: str | None = None) -> None:
-        import mediapipe as mp
-        from mediapipe.tasks import python as mp_python
-        from mediapipe.tasks.python import vision as mp_vision
+        self._available = False
+        self._landmarker = None
+        self._mp = None
 
-        path = model_path or _DEFAULT_MODEL_PATH
-        path = os.path.abspath(path)
+        path = os.path.abspath(model_path or _DEFAULT_MODEL_PATH)
 
+        # ── 1. Check asset existence ──────────────────────────────────────
         if not os.path.exists(path):
-            raise FileNotFoundError(
-                f"MediaPipe FaceLandmarker model not found at {path}. "
-                "Run: python models/download_weights.py"
+            logger.warning(
+                "FacialAnalyzer disabled: model asset not found at %s. "
+                "Run:  python models/download_weights.py  to download it. "
+                "Facial-analysis scores will be neutral (0.5) until then.",
+                path,
+            )
+            return
+
+        # ── 2. Import MediaPipe ───────────────────────────────────────────
+        try:
+            import mediapipe as mp
+            from mediapipe.tasks import python as mp_python
+            from mediapipe.tasks.python import vision as mp_vision
+        except ImportError as exc:
+            logger.warning(
+                "FacialAnalyzer disabled: mediapipe package unavailable (%s). "
+                "Install it with:  pip install mediapipe==0.10.14",
+                exc,
+            )
+            return
+
+        # ── 3. Initialise landmarker ──────────────────────────────────────
+        try:
+            base_options = mp_python.BaseOptions(model_asset_path=path)
+            options = mp_vision.FaceLandmarkerOptions(
+                base_options=base_options,
+                num_faces=10,
+                min_face_detection_confidence=0.5,
+                min_face_presence_confidence=0.5,
+            )
+            self._landmarker = mp_vision.FaceLandmarker.create_from_options(options)
+            self._mp = mp
+            self._available = True
+            logger.info("FacialAnalyzer initialised from %s", path)
+        except Exception as exc:
+            logger.warning(
+                "FacialAnalyzer disabled: failed to create FaceLandmarker (%s). "
+                "Facial-analysis scores will be neutral until this is resolved.",
+                exc,
             )
 
-        base_options = mp_python.BaseOptions(model_asset_path=path)
-        options = mp_vision.FaceLandmarkerOptions(
-            base_options=base_options,
-            num_faces=10,
-            min_face_detection_confidence=0.5,
-            min_face_presence_confidence=0.5,
-        )
-        self._landmarker = mp_vision.FaceLandmarker.create_from_options(options)
-        self._mp = mp
+    # ── Singleton ────────────────────────────────────────────────────────────
 
     @classmethod
     def get_instance(cls, model_path: str | None = None) -> FacialAnalyzer:
+        """
+        Return the shared instance, creating it on first call.
+
+        Never raises — if initialisation fails the returned object has
+        ``available=False`` and safe stub behaviour.
+        """
         if cls._instance is None:
             cls._instance = cls(model_path)
         return cls._instance
 
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Force recreation of the singleton (useful in tests)."""
+        cls._instance = None
+
+    # ── Public API ───────────────────────────────────────────────────────────
+
+    @property
+    def available(self) -> bool:
+        return self._available
+
     def analyze(self, image: Image.Image) -> FacialAnalysis:
+        """
+        Analyse facial anatomy in *image*.
+
+        Returns a neutral stub if MediaPipe is unavailable rather than raising,
+        so the detection pipeline continues gracefully.
+        """
+        if not self._available:
+            return _neutral_analysis()
+
+        try:
+            return self._analyze_inner(image)
+        except Exception as exc:
+            logger.warning("FacialAnalyzer.analyze failed unexpectedly: %s", exc)
+            return _neutral_analysis()
+
+    # ── Internal ─────────────────────────────────────────────────────────────
+
+    def _analyze_inner(self, image: Image.Image) -> FacialAnalysis:
         img_rgb = np.array(image.convert("RGB"))
         h, w = img_rgb.shape[:2]
 
@@ -93,7 +180,6 @@ class FacialAnalyzer:
             )
 
         face_count = len(detection.face_landmarks)
-        # Analyse the most prominent (first) face
         raw_lm = detection.face_landmarks[0]
         pts = [(lm.x * w, lm.y * h) for lm in raw_lm]
 
@@ -108,7 +194,8 @@ class FacialAnalyzer:
             landmark_points=[[p[0], p[1]] for p in pts[:68]],
         )
 
-    # ------------------------------------------------------------------
+    # ── Anatomical scoring helpers ────────────────────────────────────────────
+
     def _landmark_symmetry(self, pts: list[tuple]) -> float:
         nose_tip = pts[1]
         midline_x = nose_tip[0]
