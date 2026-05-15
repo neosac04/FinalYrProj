@@ -23,8 +23,29 @@ def build_transforms() -> transforms.Compose:
     )
 
 
-def build_model(device: torch.device) -> nn.Module:
-    model = efficientnet_b4(weights=EfficientNet_B4_Weights.IMAGENET1K_V1)
+def build_model(device: torch.device, local_backbone: Path | None = None) -> nn.Module:
+    """Build EfficientNet-B4 with a 2-class head.
+
+    Loads ImageNet backbone from *local_backbone* when provided (avoids SSL
+    issues on Python 3.14 macOS).  Falls back to torchvision download if the
+    path is not given or doesn't exist.
+    """
+    if local_backbone and local_backbone.exists():
+        # Build architecture without pretrained weights, then load locally.
+        model = efficientnet_b4(weights=None)
+        state = torch.load(str(local_backbone), map_location="cpu", weights_only=False)
+        # The local file keeps a 1 000-class head — strict=False is intentional;
+        # we replace classifier[1] immediately below.
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        # Only the classifier head keys should be missing/unexpected — warn if more.
+        non_head = [k for k in (missing + unexpected) if "classifier" not in k]
+        if non_head:
+            print(f"WARNING: unexpected non-head keys: {non_head[:5]} …")
+        print(f"Loaded backbone from local file: {local_backbone}")
+    else:
+        print("Local backbone not found — downloading from PyTorch CDN …")
+        model = efficientnet_b4(weights=EfficientNet_B4_Weights.IMAGENET1K_V1)
+
     model.classifier[1] = nn.Linear(1792, 2)
 
     for p in model.parameters():
@@ -127,8 +148,14 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "models" / "efficientnet_binary.pth",
+        default=Path(__file__).resolve().parent / "app" / "models" / "weights" / "efficientnet_binary.pth",
         help="Checkpoint output path.",
+    )
+    parser.add_argument(
+        "--backbone-weights",
+        type=Path,
+        default=Path(__file__).resolve().parent / "app" / "models" / "weights" / "efficientnet_b4.pth",
+        help="Local ImageNet backbone .pth to load instead of downloading (avoids SSL issues).",
     )
     parser.add_argument(
         "--eval-dirs",
@@ -142,13 +169,21 @@ def main() -> None:
     device = torch.device(args.device if args.device == "cpu" or torch.cuda.is_available() else "cpu")
     transform = build_transforms()
 
-    train_dir = args.dataset_root / "train"
-    val_dir = args.dataset_root / "val"
-    if not train_dir.exists() or not val_dir.exists():
+    # Support both lower-case (train/val) and Title-Case (Train/Validation) folder names
+    def _find_dir(root: Path, *candidates: str) -> Path:
+        for name in candidates:
+            p = root / name
+            if p.exists():
+                return p
         raise FileNotFoundError(
-            f"Expected dataset structure:\n{args.dataset_root}/train/real, {args.dataset_root}/train/fake, "
-            f"{args.dataset_root}/val/real, {args.dataset_root}/val/fake"
+            f"Could not find any of {candidates} inside {root}. "
+            f"Directory contents: {[d.name for d in root.iterdir() if d.is_dir()]}"
         )
+
+    train_dir = _find_dir(args.dataset_root, "train", "Train")
+    val_dir   = _find_dir(args.dataset_root, "val", "Val", "Validation", "validation")
+    print(f"Train dir : {train_dir}")
+    print(f"Val   dir : {val_dir}")
 
     train_ds = datasets.ImageFolder(root=str(train_dir), transform=transform)
     val_ds = datasets.ImageFolder(root=str(val_dir), transform=transform)
@@ -156,7 +191,7 @@ def main() -> None:
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
     print("Class mapping:", train_ds.class_to_idx)
-    model = build_model(device)
+    model = build_model(device, local_backbone=args.backbone_weights)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.classifier.parameters(), lr=args.lr)
 
