@@ -15,7 +15,7 @@ This chapter presents the evaluation of the three individual models and the ense
 EfficientNet-B4 was trained for 5 epochs with a frozen backbone. Because only the two-class head was updated, training was stable throughout with no sign of overfitting. Both training and validation accuracy converged closely together by epoch 5 at around 82.4\%, and the loss curves decreased smoothly without the oscillation seen in the deeper F3Net training. The close tracking of train and validation curves throughout confirms that head-only fine-tuning does not over-fit the training data when the backbone is frozen (Fig.\,\ref{fig:effnet_curves}).
 \end{spacing}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.92\textwidth]{figures/effnet_training_curves.pdf}
   \caption{EfficientNet-B4 training accuracy and loss over 5 epochs}
@@ -30,7 +30,7 @@ F3Net training ran for 28 epochs across three phases. The effect of progressive 
 The validation loss oscillation visible in Phase 2 is a known side effect of Mixup augmentation with a moderately high alpha --- the smooth interpolated labels widen the decision boundary but produce noisier gradient estimates. This was acceptable because checkpointing used AUC-ROC rather than loss, so the saved model corresponds to the best AUC checkpoint rather than the lowest loss epoch.
 \end{spacing}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.96\textwidth]{figures/f3net_training_curves.pdf}
   \caption{F3Net training accuracy and loss over 28 epochs (phase boundaries shown as dashed lines)}
@@ -47,7 +47,7 @@ Table\,\ref{tab:model_metrics} summarises the classification metrics for each in
 \end{spacing}
 
 \renewcommand{\arraystretch}{1.3}
-\begin{table}[htbp]
+\begin{table}[H]
   \centering
   \begin{tabular}{|l|c|c|c|c|c|}
   \hline
@@ -70,16 +70,16 @@ The ViT model achieves the highest individual accuracy at 93.2\% and a near-perf
 The ensemble reaches 90.5\% accuracy, which is higher than F3Net and EfficientNet individually but lower than ViT alone. This is expected --- the ensemble does not always outperform the best individual model in accuracy, but it is more consistent across image types. On images where ViT is uncertain (score near 0.5), F3Net and EfficientNet often provide disambiguating evidence. The AUC of 0.975 and the F1-score of 0.906 both reflect this broader coverage.
 \end{spacing}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
-  \includegraphics[width=0.68\textwidth]{figures/model_comparison.pdf}
+  \includegraphics[width=0.72\textwidth]{figures/model_comparison.pdf}
   \caption{Accuracy and AUC comparison across individual models and the ensemble}
   \label{fig:model_comparison}
 \end{figure}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
-  \includegraphics[width=0.60\textwidth]{figures/roc_curves.pdf}
+  \includegraphics[width=0.62\textwidth]{figures/roc_curves.pdf}
   \caption{ROC curves for each model and the ensemble}
   \label{fig:roc_curves}
 \end{figure}
@@ -90,12 +90,12 @@ The ensemble reaches 90.5\% accuracy, which is higher than F3Net and EfficientNe
 \section{Ensemble Confusion Matrix}
 
 \begin{spacing}{1.5}
-Fig.\,\ref{fig:conf_matrix} shows the confusion matrix for the ensemble model on the 1000-image test set. Of 500 real images, 445 were correctly classified and 55 were incorrectly flagged as fake (false positives). Of 500 fake images, 460 were correctly identified and 40 were missed (false negatives). A false negative in this context --- a deepfake that goes undetected --- is generally the more costly error, so the precision-recall tradeoff was tuned toward higher recall (0.920) at the cost of slightly lower precision (0.893) via the 0.62 fake verdict threshold.
+Fig.\,\ref{fig:conf_matrix} shows the confusion matrix for the ensemble model on the 1000-image test set. Of 500 real images, 445 were correctly classified and 55 were incorrectly flagged as fake (false positives). Of 500 fake images, 460 were correctly identified and 40 were missed (false negatives). A false negative in this context --- a deepfake that goes undetected --- is generally the more costly error, so the precision-recall tradeoff was tuned toward higher recall (0.920) at the cost of slightly lower precision (0.893) via the 0.62 fake verdict threshold. Setting the fake verdict threshold at 0.62 rather than 0.50 pushes borderline cases into the Uncertain band rather than letting them through as Real, which means fewer manipulated images are silently passed.
 \end{spacing}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
-  \includegraphics[width=0.55\textwidth]{figures/ensemble_confusion_matrix.pdf}
+  \includegraphics[width=0.54\textwidth]{figures/ensemble_confusion_matrix.pdf}
   \caption{Ensemble model confusion matrix on the 1000-image test set}
   \label{fig:conf_matrix}
 \end{figure}
@@ -110,7 +110,7 @@ Table\,\ref{tab:sample_preds} shows example detection outputs from the ensemble 
 \end{spacing}
 
 \renewcommand{\arraystretch}{1.3}
-\begin{table}[htbp]
+\begin{table}[H]
   \centering
   \begin{tabular}{|p{3.2cm}|c|c|c|c|c|}
   \hline
