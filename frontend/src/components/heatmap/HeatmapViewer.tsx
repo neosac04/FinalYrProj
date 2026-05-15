@@ -3,33 +3,47 @@ import { getHeatmapUrl } from '@/api/detection'
 import { Spinner } from '@/components/shared/Spinner'
 import clsx from 'clsx'
 
-const MODELS = [
-  { key: 'ensemble',    label: 'Ensemble' },
-  { key: 'univfd',      label: 'UnivFD' },
-  { key: 'efficientnet',label: 'EfficientNet-B4' },
-  { key: 'xception',    label: 'Xception' },
+interface HeatmapModel {
+  key: string
+  label: string
+  caption: string
+}
+
+const MODELS: HeatmapModel[] = [
+  { key: 'ensemble',     label: 'Ensemble',        caption: 'Weighted average of all model heatmaps' },
+  { key: 'vit',          label: 'ViT',             caption: 'Attention map from the global image transformer' },
+  { key: 'f3net',        label: 'F3Net',           caption: 'GradCAM on the frequency-domain features' },
+  { key: 'efficientnet', label: 'EfficientNet',    caption: 'GradCAM++ on facial texture features' },
 ]
 
 interface HeatmapViewerProps {
   resultId: string
   originalUrl: string
-  landmarkPoints?: number[][]
+  availableModels: string[]   // model_votes keys + ensemble
 }
 
-export function HeatmapViewer({ resultId, originalUrl, landmarkPoints }: HeatmapViewerProps) {
-  const [activeModel, setActiveModel] = useState('ensemble')
-  const [opacity, setOpacity] = useState(0.5)
+export function HeatmapViewer({ resultId, originalUrl, availableModels }: HeatmapViewerProps) {
+  const tabs = MODELS.filter(
+    (m) => m.key === 'ensemble' || availableModels.includes(m.key),
+  )
+  const [activeModel, setActiveModel] = useState(tabs[0]?.key ?? 'ensemble')
+  const [opacity, setOpacity] = useState(0.55)
   const [heatmapUrl, setHeatmapUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     setLoading(true)
+    setError(null)
     setHeatmapUrl(null)
     const url = getHeatmapUrl(resultId, activeModel)
     const img = new Image()
     img.onload = () => { setHeatmapUrl(url); setLoading(false) }
-    img.onerror = () => setLoading(false)
+    img.onerror = () => {
+      setError(`Heatmap not available for ${activeModel}`)
+      setLoading(false)
+    }
     img.src = url
   }, [resultId, activeModel])
 
@@ -53,33 +67,26 @@ export function HeatmapViewer({ resultId, originalUrl, landmarkPoints }: Heatmap
           ctx.globalAlpha = opacity
           ctx.drawImage(hm, 0, 0, canvas.width, canvas.height)
           ctx.globalAlpha = 1
-
-          // Draw landmark dots
-          if (landmarkPoints && landmarkPoints.length > 0) {
-            ctx.fillStyle = 'rgba(0,255,128,0.85)'
-            for (const [x, y] of landmarkPoints) {
-              ctx.beginPath()
-              ctx.arc(x, y, 2, 0, Math.PI * 2)
-              ctx.fill()
-            }
-          }
         }
         hm.src = heatmapUrl
       }
     }
     orig.src = originalUrl
-  }, [originalUrl, heatmapUrl, opacity, landmarkPoints])
+  }, [originalUrl, heatmapUrl, opacity])
+
+  const activeMeta = tabs.find((m) => m.key === activeModel)
 
   return (
     <div className="card">
-      <h3 className="section-title">Forgery Heatmap</h3>
+      <h3 className="section-title">Why It Was Classified That Way</h3>
       <p className="text-xs text-gray-500 mb-4">
-        Red = high suspicion region · Blue = authentic region · Green dots = facial landmarks
+        These heatmaps show the image regions each model focused on. Red = areas the model
+        considers suspicious; blue = areas it considers normal.
       </p>
 
       {/* Model tabs */}
-      <div className="flex gap-2 mb-4 flex-wrap">
-        {MODELS.map((m) => (
+      <div className="flex gap-2 mb-3 flex-wrap">
+        {tabs.map((m) => (
           <button
             key={m.key}
             onClick={() => setActiveModel(m.key)}
@@ -94,6 +101,10 @@ export function HeatmapViewer({ resultId, originalUrl, landmarkPoints }: Heatmap
           </button>
         ))}
       </div>
+
+      {activeMeta && (
+        <p className="text-xs text-gray-500 mb-3 italic">{activeMeta.caption}</p>
+      )}
 
       {/* Opacity slider */}
       <div className="flex items-center gap-3 mb-4">
@@ -114,16 +125,21 @@ export function HeatmapViewer({ resultId, originalUrl, landmarkPoints }: Heatmap
             <Spinner className="w-8 h-8" />
           </div>
         )}
+        {error && !loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
+            <p className="text-xs text-gray-500">{error}</p>
+          </div>
+        )}
         <canvas ref={canvasRef} className="w-full h-auto rounded-xl" />
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-6 mt-3 justify-center">
+      <div className="flex items-center gap-4 mt-3 justify-center flex-wrap">
         {[
-          { color: 'bg-blue-500', label: 'Authentic' },
-          { color: 'bg-green-400', label: 'Neutral' },
+          { color: 'bg-blue-500',  label: 'Authentic' },
+          { color: 'bg-cyan-400',  label: 'Neutral' },
           { color: 'bg-yellow-400', label: 'Suspicious' },
-          { color: 'bg-red-500', label: 'High suspicion' },
+          { color: 'bg-red-500',   label: 'High suspicion' },
         ].map(({ color, label }) => (
           <div key={label} className="flex items-center gap-1.5">
             <div className={`w-3 h-3 rounded-sm ${color}`} />
