@@ -22,7 +22,7 @@ MODEL_PATHS = {
     ),
     "f3net": _env_path(
         "F3NET_MODEL_PATH",
-        "backend/app/models/weights/f3net_best.pth",
+        "backend/app/models/weights/f3net_binary_best.pth",
     ),
     # ViT weights are pulled from HuggingFace hub on first load. Sentinel path
     # is just checked for "non-empty"; the actual download is handled by the detector.

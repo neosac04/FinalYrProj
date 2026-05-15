@@ -39,7 +39,13 @@ class ViTDetector(BaseDetector):
         self.device = device
         print(f"🔍 Loading ViT deepfake detector ({_HF_MODEL_ID})…")
         self.processor = AutoImageProcessor.from_pretrained(_HF_MODEL_ID)
-        self.model = AutoModelForImageClassification.from_pretrained(_HF_MODEL_ID)
+        # output_attentions=True is needed so we can extract CLS→patch attention
+        # for the heatmap visualisation (otherwise the model returns an empty
+        # attentions tuple and the heatmap endpoint returns 503).
+        self.model = AutoModelForImageClassification.from_pretrained(
+            _HF_MODEL_ID,
+            output_attentions=True,
+        )
         self.model.to(device).eval()
 
         id2label = self.model.config.id2label
@@ -92,10 +98,14 @@ class ViTDetector(BaseDetector):
             inputs = self._preprocess_pil(preprocessed)
             with torch.no_grad():
                 outputs = self.model(**inputs, output_attentions=True)
+            if not outputs.attentions:
+                print("⚠️ ViT heatmap: model returned empty attentions tuple")
+                return None
             attn = outputs.attentions[-1]  # (1, heads, seq, seq)
             cls_to_patches = attn[0, :, 0, 1:].mean(dim=0)  # avg over heads → (196,)
             grid = cls_to_patches.reshape(14, 14).cpu().numpy()
             mn, mx = float(grid.min()), float(grid.max())
             return ((grid - mn) / (mx - mn + 1e-8)).astype(np.float32)
-        except Exception:
+        except Exception as exc:
+            print(f"⚠️ ViT heatmap failed: {exc!r}")
             return None

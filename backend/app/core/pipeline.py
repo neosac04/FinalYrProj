@@ -100,31 +100,80 @@ class DetectionPipeline:
         is_uncertain: bool,
         final_score: float,
     ) -> list[str]:
+        """
+        Produces a short, ordered list of human-readable findings.
+        Each line is independent — the frontend renders them as bullets.
+        """
         explanations: list[str] = []
 
-        if not face_detected:
-            explanations.append("No face detected; face-based models ran on the full image as fallback")
-
-        eff = scores.get("efficientnet")
-        xcep = scores.get("xceptionnet")
-        f3 = scores.get("f3net")
-        vit = scores.get("vit")
-
-        if vit is not None and vit >= 0.6:
-            explanations.append("ViT flagged learned synthesis patterns across the full image")
-        if eff is not None and eff >= 0.6:
-            explanations.append("EfficientNet flagged facial texture inconsistencies")
-        if xcep is not None and xcep >= 0.6:
-            explanations.append("XceptionNet detected localised manipulation artifacts")
-        if f3 is not None and f3 >= 0.6:
-            explanations.append("F3Net detected frequency-domain artifacts characteristic of synthesis")
-
-        if is_uncertain:
+        # ── Top-line verdict statement ────────────────────────────────────────
+        pct = round(final_score * 100)
+        if final_score >= 0.5:
             explanations.append(
-                f"Final score {final_score:.2f} falls in the uncertainty band — verdict is low confidence"
+                f"Overall, this image is {pct}% likely to be a deepfake. "
+                f"Multiple detectors agree on synthesis artifacts."
+                if pct >= 70
+                else f"Overall, this image leans fake ({pct}% confidence) but signals are mixed."
+            )
+        else:
+            real_pct = 100 - pct
+            explanations.append(
+                f"Overall, this image looks authentic ({real_pct}% confidence). "
+                f"No strong manipulation patterns detected."
+                if real_pct >= 70
+                else f"Overall, this image leans real ({real_pct}% confidence) but signals are mixed."
             )
 
-        if not explanations:
-            explanations.append("No strong manipulation indicators detected across the model trio")
+        # ── Face-detection context ────────────────────────────────────────────
+        if not face_detected:
+            explanations.append(
+                "No face was detected, so face-cropped models analysed the full image instead."
+            )
+
+        # ── Per-model findings, sorted strongest signal first ─────────────────
+        eff = scores.get("efficientnet")
+        f3 = scores.get("f3net")
+        vit = scores.get("vit")
+        xcep = scores.get("xceptionnet")
+
+        # FAKE-direction model findings
+        if vit is not None and vit >= 0.6:
+            explanations.append(
+                f"ViT (full-image transformer) is {round(vit * 100)}% confident the image is synthetic — "
+                "it spotted learned generation patterns across the whole frame."
+            )
+        if f3 is not None and f3 >= 0.6:
+            explanations.append(
+                f"F3Net (frequency analyser) is {round(f3 * 100)}% confident it's fake — "
+                "the DCT decomposition revealed unnatural frequency-band energy typical of GAN/diffusion synthesis."
+            )
+        if eff is not None and eff >= 0.6:
+            explanations.append(
+                f"EfficientNet (facial-texture CNN) is {round(eff * 100)}% confident it's fake — "
+                "it found micro-texture inconsistencies in the facial region (skin pores, edge blending, eye reflections)."
+            )
+        if xcep is not None and xcep >= 0.6:
+            explanations.append(
+                f"XceptionNet flagged localised manipulation artifacts ({round(xcep * 100)}% fake)."
+            )
+
+        # REAL-direction model findings — only mention strong real signals
+        if vit is not None and vit <= 0.2:
+            explanations.append(
+                f"ViT is {round((1 - vit) * 100)}% confident the image is authentic — "
+                "no synthesis patterns visible in the global image structure."
+            )
+        if f3 is not None and f3 <= 0.2:
+            explanations.append(
+                f"F3Net is {round((1 - f3) * 100)}% confident the image is real — "
+                "frequency-domain energy matches that of natural photographs."
+            )
+
+        # ── Uncertainty warning ───────────────────────────────────────────────
+        if is_uncertain:
+            explanations.append(
+                f"⚠ The final score ({final_score:.2f}) falls inside the uncertainty band (0.38–0.62). "
+                "Treat this verdict as low confidence — borderline cases benefit from human review."
+            )
 
         return explanations

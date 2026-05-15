@@ -113,7 +113,7 @@ def main() -> None:
     # --- F3Net calibration ---
     print(f"Loading F3Net …")
     f3 = _F3NetWrapper()
-    f3.load_state_dict(torch.load("app/models/weights/f3net_best.pth", map_location="cpu", weights_only=False))
+    f3.load_state_dict(torch.load("app/models/weights/f3net_binary_best.pth", map_location="cpu", weights_only=False))
     f3.eval()
     print(f"Scoring {2 * args.n} validation images on F3Net (full image, logit space)…")
     f3_fake = collect_f3_logit_diff(f3, fake_paths)

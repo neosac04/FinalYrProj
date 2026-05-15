@@ -37,18 +37,17 @@ export function UploadPage() {
               Detect Deepfakes & AI-Generated Images
             </h2>
             <p className="text-gray-500 max-w-lg mx-auto">
-              4 deep learning models — UnivFD, EfficientNet-B7, FreqNet, DIRE — analyse your image
-              with facial forensics, frequency analysis, and PRNU camera fingerprinting.
+              Three deep-learning specialists — a Vision Transformer, a frequency-domain
+              analyser, and a facial-texture CNN — vote on your image and explain their reasoning.
             </p>
           </div>
 
           {/* Model pills */}
           <div className="flex flex-wrap gap-2 justify-center">
             {[
-              { label: 'UnivFD (CLIP)', desc: 'Universal' },
-              { label: 'EfficientNet-B4', desc: 'Face Forgeries' },
-              { label: 'Xception (FF++)', desc: 'Texture Artifacts' },
-              { label: 'DistilDIRE', desc: 'Diffusion' },
+              { label: 'ViT',          desc: 'Full image · global patterns' },
+              { label: 'F3Net',        desc: 'DCT frequency artifacts' },
+              { label: 'EfficientNet', desc: 'Face texture forensics' },
             ].map((m) => (
               <div key={m.label} className="bg-gray-900 border border-gray-800 rounded-full px-3 py-1.5 text-xs">
                 <span className="text-gray-300 font-medium">{m.label}</span>
@@ -101,14 +100,12 @@ export function UploadPage() {
 
           {/* Feature grid */}
           {status === 'idle' && !selectedFile && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
               {[
-                { icon: '🔬', title: 'Explainability Heatmaps', desc: 'See exactly what regions look fake' },
-                { icon: '🫀', title: 'Anatomical Analysis', desc: 'Iris circularity, jaw seams, eye reflections' },
-                { icon: '📊', title: 'Frequency Forensics', desc: 'FFT/DCT GAN artifact detection' },
-                { icon: '📷', title: 'Camera Fingerprint', desc: 'PRNU noise authenticity verification' },
-                { icon: '🧬', title: 'Fake Type Classification', desc: 'GAN vs Diffusion vs Face Swap' },
-                { icon: '📡', title: 'PCA Feature Space', desc: 'Visual cluster positioning' },
+                { icon: '🎯', title: 'Final fused verdict', desc: 'Confidence-weighted ensemble of 3 specialists' },
+                { icon: '🗳️', title: 'Per-model breakdown', desc: 'See exactly how each model voted' },
+                { icon: '🔥', title: 'GradCAM heatmaps', desc: 'Visual evidence — see which regions flagged it' },
+                { icon: '💬', title: 'Plain-language reasoning', desc: 'Text explanations of every finding' },
               ].map((f) => (
                 <div key={f.title} className="card-sm">
                   <div className="text-2xl mb-2">{f.icon}</div>

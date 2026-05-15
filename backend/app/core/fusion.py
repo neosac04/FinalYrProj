@@ -10,24 +10,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-# Per-model AUC on Dataset/Test (held out from calibration):
+# Per-model AUC on Validation/ (calibration set, 400 fake + 400 real):
 #   - ViT (dima806):   AUC 0.999  → dominant signal
-#   - EfficientNet:    AUC 0.751  → solid second opinion (calibrated)
-#   - F3Net:           AUC 0.532  → near noise post-calibration, weight 0
+#   - F3Net (retrained head):  AUC 0.958  → strong frequency-domain second opinion
+#   - EfficientNet:    AUC 0.764  → calibrated facial-texture detector
 #   - XceptionNet:     AUC 0.475  → disabled in registry
-# Once F3Net's head is retrained on Dataset/, raise its weight ≥ 0.15.
+# Weights scaled with (AUC − 0.5), then renormalised within the face / no-face
+# routing groups. EfficientNet is downweighted heavily when no face is present
+# because its face-crop assumption breaks down.
 _BASE_WEIGHTS_FACE = {
-    "vit": 0.70,
-    "efficientnet": 0.30,
+    "vit": 0.50,
+    "f3net": 0.35,
+    "efficientnet": 0.15,
     "xceptionnet": 0.0,
-    "f3net": 0.0,
 }
 
 _BASE_WEIGHTS_NO_FACE = {
-    "vit": 0.80,
-    "efficientnet": 0.20,
+    "vit": 0.55,
+    "f3net": 0.40,
+    "efficientnet": 0.05,
     "xceptionnet": 0.0,
-    "f3net": 0.0,
 }
 
 # Uncertainty band — outside this range the local verdict is considered confident.

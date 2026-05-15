@@ -1,60 +1,55 @@
-import { ShieldCheck, ShieldX, ShieldAlert, Clock } from 'lucide-react'
+import { ShieldCheck, ShieldX, ShieldAlert, Clock, Camera, CameraOff } from 'lucide-react'
 import clsx from 'clsx'
-import type { Verdict, FakeType } from '@/types/detection'
-
-const FAKE_TYPE_LABELS: Record<FakeType, string> = {
-  gan:             'GAN Generated',
-  face_swap:       'Face Swap',
-  face_reenactment:'Face Reenactment',
-  diffusion:       'Diffusion Model',
-  photoshop:       'Photoshop / Edited',
-  real:            'Authentic',
-}
+import type { Verdict } from '@/types/detection'
 
 interface VerdictBannerProps {
   verdict: Verdict
-  fakeProb: number
-  confidence: number
-  fakeType: FakeType
-  fakeTypeConf: number
+  finalScore: number          // 0-1 fused fake probability
+  isUncertain: boolean
+  faceDetected: boolean
   inferenceMs: number
-  warnings: string[]
 }
 
 export function VerdictBanner({
-  verdict, fakeProb, confidence, fakeType, fakeTypeConf, inferenceMs, warnings,
+  verdict, finalScore, isUncertain, faceDetected, inferenceMs,
 }: VerdictBannerProps) {
-  const config = {
-    FAKE: {
-      icon: ShieldX,
-      label: 'DEEPFAKE DETECTED',
-      bg: 'bg-fake/10',
-      border: 'border-fake/40',
-      text: 'text-fake',
-      ring: '#ef4444',
-    },
-    REAL: {
-      icon: ShieldCheck,
-      label: 'AUTHENTIC IMAGE',
-      bg: 'bg-real/10',
-      border: 'border-real/40',
-      text: 'text-real',
-      ring: '#22c55e',
-    },
-    UNCERTAIN: {
-      icon: ShieldAlert,
-      label: 'UNCERTAIN',
-      bg: 'bg-uncertain/10',
-      border: 'border-uncertain/40',
-      text: 'text-uncertain',
-      ring: '#f59e0b',
-    },
-  }[verdict]
+  const fakePercent = Math.round(finalScore * 100)
+  const realPercent = 100 - fakePercent
+  const displayPercent = verdict === 'fake' ? fakePercent : realPercent
+
+  const config = isUncertain
+    ? {
+        icon: ShieldAlert,
+        label: 'UNCERTAIN',
+        sub: 'Low-confidence verdict — borderline case',
+        bg: 'bg-uncertain/10',
+        border: 'border-uncertain/40',
+        text: 'text-uncertain',
+        ring: '#f59e0b',
+      }
+    : verdict === 'fake'
+    ? {
+        icon: ShieldX,
+        label: 'LIKELY DEEPFAKE',
+        sub: `This image is ${fakePercent}% likely to be a deepfake`,
+        bg: 'bg-fake/10',
+        border: 'border-fake/40',
+        text: 'text-fake',
+        ring: '#ef4444',
+      }
+    : {
+        icon: ShieldCheck,
+        label: 'LIKELY AUTHENTIC',
+        sub: `This image is ${realPercent}% likely to be real`,
+        bg: 'bg-real/10',
+        border: 'border-real/40',
+        text: 'text-real',
+        ring: '#22c55e',
+      }
 
   const Icon = config.icon
-  const fakePercent = Math.round(fakeProb * 100)
-  const confPercent = Math.round(confidence * 100)
   const circumference = 2 * Math.PI * 54
+  const ringFraction = displayPercent / 100
 
   return (
     <div className={clsx('card border', config.border, config.bg)}>
@@ -68,13 +63,15 @@ export function VerdictBanner({
               stroke={config.ring} strokeWidth={10}
               strokeLinecap="round"
               strokeDasharray={circumference}
-              strokeDashoffset={circumference * (1 - fakeProb)}
+              strokeDashoffset={circumference * (1 - ringFraction)}
               style={{ transition: 'stroke-dashoffset 1s ease' }}
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className={clsx('text-3xl font-bold', config.text)}>{fakePercent}%</span>
-            <span className="text-xs text-gray-500">fake prob</span>
+            <span className={clsx('text-3xl font-bold', config.text)}>{displayPercent}%</span>
+            <span className="text-xs text-gray-500 uppercase tracking-wide">
+              {verdict === 'fake' ? 'fake' : 'real'}
+            </span>
           </div>
         </div>
 
@@ -84,30 +81,28 @@ export function VerdictBanner({
             <Icon size={28} className={config.text} />
             <h2 className={clsx('text-2xl font-bold', config.text)}>{config.label}</h2>
           </div>
+          <p className="text-gray-300 text-sm md:text-base mb-3">{config.sub}</p>
 
-          <div className="flex flex-wrap gap-3 justify-center md:justify-start mb-4">
-            <span className={clsx('badge', verdict === 'FAKE' ? 'badge-fake' : verdict === 'REAL' ? 'badge-real' : 'badge-uncertain')}>
-              Confidence: {confPercent}%
+          <div className="flex flex-wrap gap-2 justify-center md:justify-start mb-3">
+            <span className={clsx(
+              'rounded-full px-3 py-1 text-xs font-medium border',
+              isUncertain
+                ? 'bg-uncertain/15 text-uncertain border-uncertain/40'
+                : verdict === 'fake'
+                ? 'bg-fake/15 text-fake border-fake/40'
+                : 'bg-real/15 text-real border-real/40',
+            )}>
+              Final fused score: {fakePercent}% fake / {realPercent}% real
             </span>
-            <span className="bg-gray-800 text-gray-300 border border-gray-700 rounded-full px-3 py-1 text-sm font-medium">
-              {FAKE_TYPE_LABELS[fakeType]} ({Math.round(fakeTypeConf * 100)}%)
+            <span className="rounded-full px-3 py-1 text-xs font-medium border bg-gray-800 text-gray-300 border-gray-700 flex items-center gap-1">
+              {faceDetected ? <Camera size={12} /> : <CameraOff size={12} />}
+              {faceDetected ? 'Face detected' : 'No face — full image used'}
             </span>
           </div>
 
-          {warnings.length > 0 && (
-            <div className="mt-3 space-y-1">
-              {warnings.map((w, i) => (
-                <p key={i} className="text-xs text-uncertain flex items-start gap-1">
-                  <ShieldAlert size={12} className="mt-0.5 flex-shrink-0" />
-                  {w}
-                </p>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center gap-1 mt-3 text-xs text-gray-600">
+          <div className="flex items-center gap-1 text-xs text-gray-500 justify-center md:justify-start">
             <Clock size={12} />
-            Analysis completed in {Math.round(inferenceMs)}ms
+            Analysis completed in {Math.round(inferenceMs)} ms
           </div>
         </div>
       </div>
