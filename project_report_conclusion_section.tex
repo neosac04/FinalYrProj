@@ -41,7 +41,7 @@ The system was designed with accessibility and interpretability as primary const
 
 Running on CPU by default means the backend can be hosted on standard cloud instances without GPU costs, lowering the barrier for deployment by smaller organisations such as regional newsrooms or civil society groups. The open-source codebase and the documented training scripts make it straightforward for other teams to retrain on newer or domain-specific datasets.
 
-All training was done using publicly available cloud compute (Kaggle's free GPU tier), and the three base models were built on top of existing pretrained weights rather than trained from scratch. This kept energy consumption significantly lower than it would have been for a full from-scratch training run.
+All training was done using publicly available cloud compute (Kaggle's free GPU tier). F3Net and EfficientNet-B4 were trained with pretrained backbones --- ImageNet weights for EfficientNet and DeepfakeBench-pretrained weights for F3Net --- but their binary classification heads were trained from scratch on project-specific datasets, and F3Net underwent full progressive unfreezing across three phases. The Vision Transformer was not retrained at all; it was used directly from the HuggingFace Hub model \texttt{dima806/deepfake\_vs\_real\_image\_detection}, which had already been fine-tuned on approximately 200,000 real and AI-generated images. Training only the components that needed adaptation, rather than running any model fully from scratch, kept energy consumption and compute time substantially lower than a ground-up training run would have required.
 \end{spacing}
 
 \subsection{Impact Assessment}
